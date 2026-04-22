@@ -1,0 +1,33 @@
+[project]
+name = "translation_service"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "google-auth",
+    "pydantic-settings",
+    "google-cloud-storage",
+    "google-cloud-translate",
+    "python-decouple",
+    "pymupdf",
+    "fastapi",
+    "uvicorn",
+    "python-multipart"
+]
+
+[project.scripts]
+translation = "translation_service:main"
+google_translate = "translation_service.dataset_creation:translate_text"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "translation-service",
+]
+
+[tool.uv.sources]
+translation-service = { workspace = true }
