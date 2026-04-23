@@ -13,10 +13,7 @@ def translate_text(
     target_language: str = "en",
     source_language: str | None = None,
 ) -> dict:
-    credentials = service_account.Credentials.from_service_account_file(
-        ec.translation_service_creds
-    )
-    translate_client = translate.Client(credentials=credentials)
+    translate_client = get_translation_client()
 
     if isinstance(text, bytes):
         text = [text.decode("utf-8")]
@@ -39,19 +36,7 @@ def decode_base64(base64_string):
     input_string = input_bytes.decode('utf-8')
     return input_string
 
-def translate_pdf_sync(
-    file_path: bytes,
-    target_language: str = "en",
-    source_language: str = None,
-) -> str:
-    """
-    Translate a document by sending its bytes directly to the API.
-    No GCS bucket needed. Returns path to the translated output file.
-    """
-    try:
-        project = ec.translation_project
-        location = ec.translation_location
-        logger.info(f"Configuring translation client in {project=} at {location=}")
+def get_translation_client():
         credentials_dict = {
             "type": "service_account",
             "project_id": ec.translation_project,
@@ -71,7 +56,22 @@ def translate_pdf_sync(
             scopes=["https://www.googleapis.com/auth/cloud-platform"],
         )
         client = translate.TranslationServiceClient(credentials=credentials)
-        parent = f"projects/{project}/locations/{location}"
+        return client
+
+def translate_pdf_sync(
+    file_path: bytes,
+    target_language: str = "en",
+    source_language: str = None,
+) -> str:
+    """
+    Translate a document by sending its bytes directly to the API.
+    No GCS bucket needed. Returns path to the translated output file.
+    """
+    try:
+        project = ec.translation_project
+        location = ec.translation_location
+        logger.info(f"Configuring translation client in {project=} at {location=}")
+        client = get_translation_client()
     except Exception as _:
         tb = " >> ".join(
             line.strip() for line in traceback.format_exc().splitlines() if line.strip()
@@ -94,6 +94,7 @@ def translate_pdf_sync(
     for start in range(0, total_pages, 20):
         end = min(start + 20, total_pages)
         logger.info(f"Processing page nums {start}-{end - 1}")
+        parent = f"projects/{project}/locations/{location}"
         try:
             batch_doc = fitz.open()
             batch_doc.insert_pdf(src, from_page=start, to_page=end - 1)
