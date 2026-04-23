@@ -16,13 +16,15 @@ dependencies = [
     "python-multipart"
 ]
 
-[project.scripts]
-translation = "translation_service:main"
-google_translate = "translation_service.dataset_creation:translate_text"
-
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/translation_service"]
+
+[tool.hatch.build.targets.editable]
+packages = ["src/translation_service"]
 
 [dependency-groups]
 dev = [
