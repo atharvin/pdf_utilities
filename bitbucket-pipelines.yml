@@ -1,0 +1,64 @@
+image: amazon/aws-cli:2.13.0
+
+options:
+  docker: true
+
+pipelines:
+  custom:              
+    Nroad-AWS-environment:
+      - variables:
+          - name: "Environment"
+            default: "dev"
+            allowed-values:
+              - dev
+              - uat        
+      - step: 
+          name: "Create a Tag"
+          image: atlassian/default-image
+          script:
+            - echo "Building for environment $Environment, from branch $BITBUCKET_BRANCH"
+            - export DATE_STRING=`date +%Y-%m-%d-%H-%M`
+            - tag_name=`echo "e-$Environment-br-$BITBUCKET_BRANCH-bn-$BITBUCKET_BUILD_NUMBER-$DATE_STRING" | sed s/_/-/g`
+            - tag_name=${tag_name//\//-}
+            - git tag -a $tag_name -m "$tag_name"
+            - git push origin $tag_name
+            - echo export TAG_NAME=$tag_name > tag_info.txt
+          artifacts:
+            - tag_info.txt
+
+      - step: 
+          name: "Pyarmor"
+          image: python:3.10
+          script:
+            #- cd app
+            - pip install pyarmor==8.5.12
+            - pyarmor -v
+            - echo ${PYARMOR_KEY} | base64 --decode --ignore-garbage > pyrmor-lic.zip
+            - pyarmor reg pyrmor-lic.zip
+            - pyarmor -v
+            - echo $TEST_VAR
+            - echo $PYARMOR_KEY
+            # copy *.json:
+            - pyarmor cfg data_files="*.json *.bin *.pth *.txt *.sh"
+            #- pyarmor gen *
+            - pyarmor gen --recursive . -O pyarmor
+            - ls
+          artifacts: # defining the artifacts to be passed to each future step.
+            - pyarmor/**
+             
+      - step:
+          name: Build and Push Docker Image
+          services:
+            - docker
+          script:
+            - echo "Environment selected:$Environment"
+            - chmod +x deployment-scripts/build_and_push_image.sh
+            - ./deployment-scripts/build_and_push_image.sh
+
+      - step:
+           name: "Deploy to EC2 via SSM"
+           deployment: DEV
+           script:
+            - echo "Executing deployment for:$Environment"
+            - chmod +x deployment-scripts/execute_remote_deploy.sh
+            - ./deployment-scripts/execute_remote_deploy.sh
