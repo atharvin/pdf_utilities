@@ -60,8 +60,8 @@ def get_translation_client():
 
 def translate_pdf_sync(
     file_path: bytes,
-    target_language: str = "en",
     source_language: str = None,
+    target_language: str = "en",
 ) -> str:
     """
     Translate a document by sending its bytes directly to the API.
