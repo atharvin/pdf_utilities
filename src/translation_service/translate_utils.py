@@ -90,6 +90,12 @@ def translate_pdf_sync(
         )
         logger.error(f"Error in reading the input file: {tb}")
         raise
+    
+    if not source_language:
+        logger.info("No source language provided hence auto detecting")
+    else:
+        logger.info(f"{source_language=} provided hence using it")
+        
 
     for start in range(0, total_pages, 20):
         end = min(start + 20, total_pages)
@@ -123,7 +129,6 @@ def translate_pdf_sync(
                 for line in traceback.format_exc().splitlines()
                 if line.strip()
             )
-            logger.error(f"Error in processing page nums {start}-{end - 1}: {tb}")
-            raise
+            logger.warning(f"Error in processing page nums {start}-{end - 1}: {tb}")
     src.close()
     return result_doc.tobytes()
