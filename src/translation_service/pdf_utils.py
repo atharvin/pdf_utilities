@@ -96,6 +96,36 @@ def pdf_chunks_to_zip(pdf_bytes: bytes, max_chunk_mb: float = _DEFAULT_CHUNK_MB)
     return buf.getvalue()
 
 
+_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "tiff", "tif", "bmp", "gif", "webp"}
+
+
+def merge_files_to_pdf(files: list[tuple[str, bytes]]) -> bytes:
+    """Merges PDFs and images (in order) into a single PDF."""
+    output = fitz.open()
+    for filename, data in files:
+        ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+        if ext == "pdf":
+            src = fitz.open(stream=data, filetype="pdf")
+        elif ext in _IMAGE_EXTENSIONS:
+            src = fitz.open(stream=data, filetype=ext)
+        else:
+            logger.warning(f"Skipping unsupported file: {filename}")
+            continue
+        output.insert_pdf(src)
+        src.close()
+    logger.info(f"Merged {len(output)} page(s) from {len(files)} file(s)")
+    return output.tobytes(**_TOBYTES_OPTS)
+
+
+def merge_zip_to_pdf(zip_bytes: bytes) -> bytes:
+    """Extracts a ZIP and merges all PDFs and images inside into a single PDF."""
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+        names = sorted(n for n in zf.namelist() if not n.endswith("/"))
+        files = [(name, zf.read(name)) for name in names]
+    logger.info(f"Extracted {len(files)} file(s) from ZIP")
+    return merge_files_to_pdf(files)
+
+
 _ALLOWED_LANGS = ec.ocr_languages
 _TESSERACT_LANGS: str | None = None
 

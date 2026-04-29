@@ -5,7 +5,7 @@ from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import StreamingResponse
 import translation_service.env_config as ec
 from translation_service.translate_utils import translate_pdf_sync
-from translation_service.pdf_utils import is_scanned_pdf, ocr_pdf, pdf_chunks_to_zip, pdf_pages_to_zip
+from translation_service.pdf_utils import is_scanned_pdf, merge_zip_to_pdf, ocr_pdf, pdf_chunks_to_zip, pdf_pages_to_zip
 
 app = FastAPI()
 
@@ -69,4 +69,20 @@ async def ocr_pdf_endpoint(file: UploadFile = File(...)):
         io.BytesIO(output_bytes),
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename={stem}_ocr.pdf"},
+    )
+
+
+@app.post(
+    "/merge-pdf",
+    response_class=StreamingResponse,
+    responses={200: {"content": {"application/pdf": {}}}},
+)
+async def merge_pdf(file: UploadFile = File(...)):
+    zip_bytes = await file.read()
+    loop = asyncio.get_event_loop()
+    output_bytes = await loop.run_in_executor(None, partial(merge_zip_to_pdf, zip_bytes))
+    return StreamingResponse(
+        io.BytesIO(output_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=merged.pdf"},
     )
