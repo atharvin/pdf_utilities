@@ -28,6 +28,9 @@ COPY ./pyproject.toml /code/pyproject.toml
 COPY ./README.md /code/README.md
 COPY ./src /code/src
 
+# Disable Tesseract's internal OpenMP parallelism so workers don't oversubscribe CPUs
+ENV OMP_THREAD_LIMIT=1
+
 # Upgrade pip, setuptools, and wheel, and install Python dependencies
 RUN pip install --upgrade pip setuptools hatchling
 RUN pip install .
