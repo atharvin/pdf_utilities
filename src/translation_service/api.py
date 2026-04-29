@@ -10,22 +10,22 @@ from translation_service.pdf_utils import is_scanned_pdf, merge_zip_to_pdf, ocr_
 app = FastAPI()
 
 
-@app.post(
-    "/translate-pdf",
-    response_class=StreamingResponse,
-    responses={200: {"content": {"application/pdf": {}}}},
-)
-async def upload_pdf(file: UploadFile = File(...), input_language:str = ""):
-    pdf_bytes = await file.read()
-    loop = asyncio.get_event_loop()
-    output_bytes = await loop.run_in_executor(None, partial(translate_pdf_sync, pdf_bytes, input_language))
-    return StreamingResponse(
-        io.BytesIO(output_bytes),
-        media_type="application/pdf",
-        headers={
-            "Content-Disposition": f"attachment; filename=translated_{file.filename}"
-        },
-    )
+# @app.post(
+#     "/translate-pdf",
+#     response_class=StreamingResponse,
+#     responses={200: {"content": {"application/pdf": {}}}},
+# )
+# async def upload_pdf(file: UploadFile = File(...), input_language:str = ""):
+#     pdf_bytes = await file.read()
+#     loop = asyncio.get_event_loop()
+#     output_bytes = await loop.run_in_executor(None, partial(translate_pdf_sync, pdf_bytes, input_language))
+#     return StreamingResponse(
+#         io.BytesIO(output_bytes),
+#         media_type="application/pdf",
+#         headers={
+#             "Content-Disposition": f"attachment; filename=translated_{file.filename}"
+#         },
+#     )
 
 
 @app.post(
