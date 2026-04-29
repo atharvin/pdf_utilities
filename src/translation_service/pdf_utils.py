@@ -123,7 +123,7 @@ def ocr_pdf(pdf_bytes: bytes) -> bytes:
         logger.info(f"OCR: page {idx + 1}/{total} done")
         return idx, result
 
-    with ThreadPoolExecutor() as executor:
+    with ThreadPoolExecutor(max_workers=ec.ocr_max_workers) as executor:
         futures = {executor.submit(_ocr_page, i, img): i for i, img in enumerate(images)}
         for future in as_completed(futures):
             idx, result = future.result()
