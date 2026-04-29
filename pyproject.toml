@@ -11,9 +11,14 @@ dependencies = [
     "google-cloud-translate",
     "python-decouple",
     "pymupdf",
+    "pdf2docx",
+    "docx2pdf",
     "fastapi",
     "uvicorn",
-    "python-multipart"
+    "python-multipart",
+    "pytesseract",
+    "pdf2image",
+    "pypdf2"
 ]
 
 [build-system]
