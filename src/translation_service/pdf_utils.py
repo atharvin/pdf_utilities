@@ -96,13 +96,14 @@ def pdf_chunks_to_zip(pdf_bytes: bytes, max_chunk_mb: float = _DEFAULT_CHUNK_MB)
     return buf.getvalue()
 
 
+_ALLOWED_LANGS = ec.ocr_languages
 _TESSERACT_LANGS: str | None = None
 
 
 def _get_all_langs() -> str:
     global _TESSERACT_LANGS
     if _TESSERACT_LANGS is None:
-        installed = [lang for lang in pytesseract.get_languages() if lang != "osd"]
+        installed = [lang for lang in pytesseract.get_languages() if lang in _ALLOWED_LANGS]
         _TESSERACT_LANGS = "+".join(installed)
         logger.info(f"Tesseract languages loaded: {_TESSERACT_LANGS}")
     return _TESSERACT_LANGS
