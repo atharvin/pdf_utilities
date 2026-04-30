@@ -107,7 +107,9 @@ def merge_files_to_pdf(files: list[tuple[str, bytes]]) -> bytes:
         if ext == "pdf":
             src = fitz.open(stream=data, filetype="pdf")
         elif ext in _IMAGE_EXTENSIONS:
-            src = fitz.open(stream=data, filetype=ext)
+            img_doc = fitz.open(stream=data, filetype=ext)
+            src = fitz.open("pdf", img_doc.convert_to_pdf())
+            img_doc.close()
         else:
             logger.warning(f"Skipping unsupported file: {filename}")
             continue
