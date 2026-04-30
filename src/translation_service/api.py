@@ -43,7 +43,7 @@ async def process_pdf(file: UploadFile = File(...), scanned: bool | None = None)
 
     if scanned:
         zip_bytes = await loop.run_in_executor(None, partial(pdf_pages_to_zip, pdf_bytes, ec.image_dpi))
-        filename = f"{stem}_pages.zip"
+        filename = f"{stem}_chunks.zip"
     else:
         zip_bytes = await loop.run_in_executor(None, pdf_chunks_to_zip, pdf_bytes)
         filename = f"{stem}_chunks.zip"
@@ -81,8 +81,10 @@ async def merge_pdf(file: UploadFile = File(...)):
     zip_bytes = await file.read()
     loop = asyncio.get_event_loop()
     output_bytes = await loop.run_in_executor(None, partial(merge_zip_to_pdf, zip_bytes))
+    stem = file.filename.removesuffix("_chunks.zip") if file.filename else "document"
+    filename = f"{stem}_merged.pdf"
     return StreamingResponse(
         io.BytesIO(output_bytes),
         media_type="application/pdf",
-        headers={"Content-Disposition": "attachment; filename=merged.pdf"},
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
