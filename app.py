@@ -14,6 +14,14 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import QThread, pyqtSignal
 
+# When running as a PyInstaller bundle, point pytesseract at the bundled binary
+if getattr(sys, "frozen", False):
+    import pytesseract
+    _base = sys._MEIPASS
+    _binary = "tesseract.exe" if sys.platform == "win32" else "tesseract"
+    pytesseract.pytesseract.tesseract_cmd = os.path.join(_base, _binary)
+    os.environ["TESSDATA_PREFIX"] = os.path.join(_base, "tessdata")
+
 import translation_service.env_config as ec
 from translation_service.pdf_utils import (
     is_scanned_pdf,
@@ -22,6 +30,13 @@ from translation_service.pdf_utils import (
     pdf_chunks_to_folder,
     pdf_pages_to_folder,
 )
+
+
+def _tesseract_available() -> bool:
+    if getattr(sys, "frozen", False):
+        binary = "tesseract.exe" if sys.platform == "win32" else "tesseract"
+        return os.path.exists(os.path.join(sys._MEIPASS, binary))
+    return bool(shutil.which("tesseract"))
 
 
 class Worker(QThread):
@@ -155,13 +170,13 @@ class OcrTab(QWidget):
 
         self.run_btn = QPushButton("Run OCR")
         self.run_btn.clicked.connect(self._run)
-        if not shutil.which("tesseract"):
+        if not _tesseract_available():
             self.run_btn.setEnabled(False)
             self.run_btn.setToolTip("Tesseract is not installed — OCR unavailable")
         lay.addWidget(self.run_btn)
 
         self.log_box = _log()
-        if not shutil.which("tesseract"):
+        if not _tesseract_available():
             self.log_box.append("Tesseract not found. Install it to use OCR.")
         lay.addWidget(self.log_box)
         self._worker = None

@@ -49,10 +49,34 @@ jobs:
           pip install .
           pip install pyinstaller
 
+      - name: Collect tessdata (Linux/macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          mkdir -p tessdata
+          TESSDATA=$(dirname "$(find /usr /opt/homebrew /usr/local -name 'eng.traineddata' -print -quit 2>/dev/null)")
+          for lang in eng kor tha fra osd; do
+            [ -f "$TESSDATA/${lang}.traineddata" ] && cp "$TESSDATA/${lang}.traineddata" tessdata/
+          done
+          echo "TESSERACT_BIN=$(which tesseract)" >> $GITHUB_ENV
+
+      - name: Collect tessdata (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          mkdir -p tessdata
+          TESSDATA="C:/Program Files/Tesseract-OCR/tessdata"
+          for lang in eng kor tha fra osd; do
+            [ -f "$TESSDATA/${lang}.traineddata" ] && cp "$TESSDATA/${lang}.traineddata" tessdata/
+          done
+          echo "TESSERACT_BIN=C:/Program Files/Tesseract-OCR/tesseract.exe" >> $GITHUB_ENV
+
       - name: Build executable
         shell: bash
         run: |
           pyinstaller --onefile --windowed --name PDFTools \
+            --add-binary "${TESSERACT_BIN}:." \
+            --add-data "tessdata:tessdata" \
             --hidden-import=translation_service.pdf_utils \
             --hidden-import=translation_service.env_config \
             --hidden-import=translation_service.logger_utils \
