@@ -14,13 +14,14 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import QThread, pyqtSignal
 
-# When running as a PyInstaller bundle, point pytesseract at the bundled binary
+# When running as a PyInstaller bundle, point bundled binaries at the right paths
 if getattr(sys, "frozen", False):
     import pytesseract
     _base = sys._MEIPASS
     _binary = "tesseract.exe" if sys.platform == "win32" else "tesseract"
     pytesseract.pytesseract.tesseract_cmd = os.path.join(_base, _binary)
     os.environ["TESSDATA_PREFIX"] = os.path.join(_base, "tessdata")
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", os.path.join(_base, "pw_browsers"))
 
 import translation_service.env_config as ec
 from translation_service.pdf_utils import (
@@ -30,6 +31,7 @@ from translation_service.pdf_utils import (
     pdf_chunks_to_folder,
     pdf_pages_to_folder,
 )
+from translation_service.browser_translate import LANG_OPTIONS, translate_folder
 
 
 def _tesseract_available() -> bool:
@@ -277,6 +279,60 @@ class MergeTab(QWidget):
         self._worker.start()
 
 
+class TranslateTab(QWidget):
+    def __init__(self):
+        super().__init__()
+        lay = QVBoxLayout(self)
+
+        self.in_line = QLineEdit()
+        self.in_line.setPlaceholderText("Folder containing documents…")
+        in_btn = QPushButton("Browse")
+        in_btn.clicked.connect(lambda: _browse_folder(self.in_line))
+        lay.addLayout(_row(QLabel("Input folder:"), self.in_line, in_btn))
+
+        self.out_line = QLineEdit()
+        self.out_line.setPlaceholderText("Output folder (leave blank to auto-create next to input)")
+        out_btn = QPushButton("Browse")
+        out_btn.clicked.connect(lambda: _browse_folder(self.out_line))
+        lay.addLayout(_row(QLabel("Output folder:"), self.out_line, out_btn))
+
+        self.lang_combo = QComboBox()
+        self.lang_combo.addItems(LANG_OPTIONS)
+        lay.addLayout(_row(QLabel("Translate to:"), self.lang_combo))
+
+        run_btn = QPushButton("Translate All")
+        run_btn.clicked.connect(self._run)
+        lay.addWidget(run_btn)
+
+        self.log_box = _log()
+        lay.addWidget(self.log_box)
+        self._worker = None
+
+    def _run(self):
+        in_dir = self.in_line.text().strip()
+        if not in_dir:
+            self.log_box.append("Select an input folder first.")
+            return
+
+        out_dir = self.out_line.text().strip() or os.path.join(
+            os.path.dirname(in_dir), f"{os.path.basename(in_dir)}_translated"
+        )
+        target_lang = self.lang_combo.currentText()
+
+        def work():
+            paths = translate_folder(
+                in_dir, out_dir, target_lang,
+                progress_cb=lambda msg: self.log_box.append(msg),
+            )
+            return f"Done. {len(paths)} file(s) saved to:\n{out_dir}"
+
+        self.log_box.append(f"Starting translation to {target_lang}…")
+        self._worker = Worker(work)
+        self._worker.done.connect(lambda m: self.log_box.append(f"✓ {m}"))
+        self._worker.failed.connect(lambda e: self.log_box.append(f"✗ Error: {e}"))
+        self._worker.start()
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -286,6 +342,7 @@ class MainWindow(QMainWindow):
         tabs.addTab(ProcessTab(), "Process PDF")
         tabs.addTab(OcrTab(), "OCR PDF")
         tabs.addTab(MergeTab(), "Merge to PDF")
+        tabs.addTab(TranslateTab(), "Translate Folder")
         self.setCentralWidget(tabs)
 
 

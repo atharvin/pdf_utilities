@@ -49,6 +49,12 @@ jobs:
           pip install .
           pip install pyinstaller
 
+      - name: Install Playwright Chromium (to local folder)
+        shell: bash
+        run: |
+          PLAYWRIGHT_BROWSERS_PATH=./pw_browsers playwright install chromium
+          echo "PW_DRIVER=$(python -c 'import playwright, os; print(os.path.join(os.path.dirname(playwright.__file__), \"driver\"))')" >> $GITHUB_ENV
+
       - name: Collect tessdata (Linux/macOS)
         if: runner.os != 'Windows'
         shell: bash
@@ -77,9 +83,12 @@ jobs:
           pyinstaller --onefile --windowed --name PDFTools \
             --add-binary "${TESSERACT_BIN}:." \
             --add-data "tessdata:tessdata" \
+            --add-data "pw_browsers:pw_browsers" \
+            --add-data "${PW_DRIVER}:playwright/driver" \
             --hidden-import=translation_service.pdf_utils \
             --hidden-import=translation_service.env_config \
             --hidden-import=translation_service.logger_utils \
+            --hidden-import=playwright \
             app.py
 
       - uses: actions/upload-artifact@v4

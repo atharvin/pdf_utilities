@@ -19,7 +19,8 @@ dependencies = [
     "pytesseract",
     "pdf2image",
     "pypdf2",
-    "pyqt6"
+    "pyqt6",
+    "playwright"
 ]
 
 [build-system]
