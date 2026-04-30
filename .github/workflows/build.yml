@@ -49,10 +49,6 @@ jobs:
           pip install .
           pip install pyinstaller
 
-      - name: Install Playwright Chromium (to local folder)
-        shell: bash
-        run: PLAYWRIGHT_BROWSERS_PATH=./pw_browsers playwright install chromium
-
       - name: Collect tessdata (Linux/macOS)
         if: runner.os != 'Windows'
         shell: bash

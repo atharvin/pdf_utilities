@@ -21,7 +21,6 @@ if getattr(sys, "frozen", False):
     _binary = "tesseract.exe" if sys.platform == "win32" else "tesseract"
     pytesseract.pytesseract.tesseract_cmd = os.path.join(_base, _binary)
     os.environ["TESSDATA_PREFIX"] = os.path.join(_base, "tessdata")
-    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", os.path.join(_base, "pw_browsers"))
 
 import translation_service.env_config as ec
 from translation_service.pdf_utils import (
