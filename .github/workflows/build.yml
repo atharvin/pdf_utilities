@@ -1,0 +1,64 @@
+name: Build PDFTools
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: PDFTools-linux
+          - os: macos-latest
+            artifact: PDFTools-macos
+          - os: windows-latest
+            artifact: PDFTools-windows
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install system deps (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            tesseract-ocr tesseract-ocr-all poppler-utils \
+            libxcb-xinerama0 libxcb-icccm4 libxcb-image0 \
+            libxcb-keysyms1 libxcb-randr0 libxcb-render-util0
+
+      - name: Install system deps (macOS)
+        if: runner.os == 'macOS'
+        run: brew install tesseract tesseract-lang poppler
+
+      - name: Install system deps (Windows)
+        if: runner.os == 'Windows'
+        run: choco install tesseract --yes
+
+      - name: Install Python deps
+        run: |
+          pip install --upgrade pip
+          pip install .
+          pip install pyinstaller
+
+      - name: Build executable
+        shell: bash
+        run: |
+          pyinstaller --onefile --windowed --name PDFTools \
+            --hidden-import=translation_service.pdf_utils \
+            --hidden-import=translation_service.env_config \
+            --hidden-import=translation_service.logger_utils \
+            app.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/
