@@ -18,7 +18,8 @@ dependencies = [
     "python-multipart",
     "pytesseract",
     "pdf2image",
-    "pypdf2"
+    "pypdf2",
+    "pyqt6"
 ]
 
 [build-system]

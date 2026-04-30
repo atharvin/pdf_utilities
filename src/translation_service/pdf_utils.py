@@ -1,4 +1,5 @@
 import io
+import os
 import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -94,6 +95,36 @@ def pdf_chunks_to_zip(pdf_bytes: bytes, max_chunk_mb: float = _DEFAULT_CHUNK_MB)
         for i, chunk in enumerate(chunks):
             zf.writestr(f"chunk_{i + 1:03d}.pdf", chunk)
     return buf.getvalue()
+
+
+def pdf_pages_to_folder(pdf_bytes: bytes, output_dir: str, dpi: int = 150) -> list[str]:
+    """Renders every page as a PNG and saves to output_dir. Returns list of saved paths."""
+    os.makedirs(output_dir, exist_ok=True)
+    matrix = fitz.Matrix(dpi / 72, dpi / 72)
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    paths = []
+    try:
+        logger.info(f"Rendering {len(doc)} page(s) at {dpi} dpi to {output_dir}")
+        for i, page in enumerate(doc):
+            path = os.path.join(output_dir, f"page_{i + 1:04d}.png")
+            page.get_pixmap(matrix=matrix).save(path)
+            paths.append(path)
+    finally:
+        doc.close()
+    return paths
+
+
+def pdf_chunks_to_folder(pdf_bytes: bytes, output_dir: str, max_chunk_mb: float = _DEFAULT_CHUNK_MB) -> list[str]:
+    """Splits PDF into chunks and saves to output_dir. Returns list of saved paths."""
+    os.makedirs(output_dir, exist_ok=True)
+    chunks = split_pdf_into_chunks(pdf_bytes, max_chunk_mb=max_chunk_mb)
+    paths = []
+    for i, chunk in enumerate(chunks):
+        path = os.path.join(output_dir, f"chunk_{i + 1:03d}.pdf")
+        with open(path, "wb") as f:
+            f.write(chunk)
+        paths.append(path)
+    return paths
 
 
 _IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "tiff", "tif", "bmp", "gif", "webp"}
