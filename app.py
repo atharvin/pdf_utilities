@@ -21,6 +21,15 @@ if getattr(sys, "frozen", False):
     _binary = "tesseract.exe" if sys.platform == "win32" else "tesseract"
     pytesseract.pytesseract.tesseract_cmd = os.path.join(_base, _binary)
     os.environ["TESSDATA_PREFIX"] = os.path.join(_base, "tessdata")
+    # Point Playwright driver (bundled) at system-installed browsers
+    os.environ["PLAYWRIGHT_DRIVER_PATH"] = os.path.join(_base, "playwright", "driver")
+    if sys.platform == "win32":
+        _pw_browsers = os.path.join(os.environ.get("LOCALAPPDATA", ""), "ms-playwright")
+    elif sys.platform == "darwin":
+        _pw_browsers = os.path.expanduser("~/Library/Caches/ms-playwright")
+    else:
+        _pw_browsers = os.path.expanduser("~/.cache/ms-playwright")
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", _pw_browsers)
 
 import translation_service.env_config as ec
 from translation_service.pdf_utils import (
