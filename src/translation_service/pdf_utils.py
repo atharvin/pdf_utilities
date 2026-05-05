@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import fitz
 import pytesseract
-from pdf2image import convert_from_bytes
+from PIL import Image as PIL_Image
 from PyPDF2 import PdfReader, PdfWriter
 
 import translation_service.env_config as ec
@@ -13,6 +13,7 @@ from translation_service.logger_utils import logger
 
 _TEXT_THRESHOLD = ec.text_threshold  # chars per page below which we consider the page image-only
 _DEFAULT_CHUNK_MB = ec.pdf_chunk_size_mb
+_DEFAULT_CHUNK_MAX_PAGES = ec.pdf_chunk_max_pages
 
 
 def is_scanned_pdf(pdf_bytes: bytes) -> bool:
@@ -48,25 +49,38 @@ def pdf_pages_to_zip(pdf_bytes: bytes, dpi: int = 150) -> bytes:
 _TOBYTES_OPTS = {"garbage": 4, "deflate": True}
 
 
-def split_pdf_into_chunks(pdf_bytes: bytes, max_chunk_mb: float = _DEFAULT_CHUNK_MB) -> list[bytes]:
-    """Splits a PDF into chunks strictly below max_chunk_mb.
+def split_pdf_into_chunks(
+    pdf_bytes: bytes,
+    max_chunk_mb: float = _DEFAULT_CHUNK_MB,
+    max_num_pages: int | None = _DEFAULT_CHUNK_MAX_PAGES,
+) -> list[bytes]:
+    """Splits a PDF into chunks below both max_chunk_mb and max_num_pages.
 
     garbage=4 + deflate on every tobytes() call gives a clean, accurate size so
     shared resources and stale cross-references don't cause the size check to lie.
-    A single page that already exceeds the limit is kept as its own chunk (can't split further).
+    A single page that already exceeds the size limit is kept as its own chunk (can't split further).
     """
     max_bytes = int(max_chunk_mb * 1024 * 1024)
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     chunks: list[bytes] = []
     try:
-        logger.info(f"Splitting {len(doc)}-page PDF into {max_chunk_mb} MB chunks")
+        logger.info(
+            f"Splitting {len(doc)}-page PDF into {max_chunk_mb} MB"
+            + (f" / {max_num_pages}-page" if max_num_pages else "") + " chunks"
+        )
         chunk_doc = fitz.open()
         for i in range(len(doc)):
+            # Flush current chunk if the page limit would be exceeded by adding this page
+            if max_num_pages is not None and len(chunk_doc) >= max_num_pages:
+                chunks.append(chunk_doc.tobytes(**_TOBYTES_OPTS))
+                logger.info(f"Chunk {len(chunks)} saved (page limit), starting at page {i + 1}")
+                chunk_doc = fitz.open()
+
             chunk_doc.insert_pdf(doc, from_page=i, to_page=i)
             serialized = chunk_doc.tobytes(**_TOBYTES_OPTS)
             if len(serialized) > max_bytes:
                 if len(chunk_doc) == 1:
-                    # Single page already exceeds limit — save as-is, nothing to split
+                    # Single page already exceeds size limit — save as-is, nothing to split
                     logger.warning(
                         f"Page {i + 1} alone is {len(serialized) / 1024 / 1024:.1f} MB"
                         f", exceeds {max_chunk_mb} MB limit"
@@ -76,7 +90,7 @@ def split_pdf_into_chunks(pdf_bytes: bytes, max_chunk_mb: float = _DEFAULT_CHUNK
                 else:
                     chunk_doc.delete_page(-1)
                     chunks.append(chunk_doc.tobytes(**_TOBYTES_OPTS))
-                    logger.info(f"Chunk {len(chunks)} saved, ended before page {i + 1}")
+                    logger.info(f"Chunk {len(chunks)} saved (size limit), ended before page {i + 1}")
                     chunk_doc = fitz.open()
                     chunk_doc.insert_pdf(doc, from_page=i, to_page=i)
         if len(chunk_doc) > 0:
@@ -87,9 +101,13 @@ def split_pdf_into_chunks(pdf_bytes: bytes, max_chunk_mb: float = _DEFAULT_CHUNK
     return chunks
 
 
-def pdf_chunks_to_zip(pdf_bytes: bytes, max_chunk_mb: float = _DEFAULT_CHUNK_MB) -> bytes:
+def pdf_chunks_to_zip(
+    pdf_bytes: bytes,
+    max_chunk_mb: float = _DEFAULT_CHUNK_MB,
+    max_num_pages: int | None = _DEFAULT_CHUNK_MAX_PAGES,
+) -> bytes:
     """Splits the PDF into size-bounded chunks and returns them as a ZIP archive."""
-    chunks = split_pdf_into_chunks(pdf_bytes, max_chunk_mb=max_chunk_mb)
+    chunks = split_pdf_into_chunks(pdf_bytes, max_chunk_mb=max_chunk_mb, max_num_pages=max_num_pages)
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for i, chunk in enumerate(chunks):
@@ -114,10 +132,15 @@ def pdf_pages_to_folder(pdf_bytes: bytes, output_dir: str, dpi: int = 150) -> li
     return paths
 
 
-def pdf_chunks_to_folder(pdf_bytes: bytes, output_dir: str, max_chunk_mb: float = _DEFAULT_CHUNK_MB) -> list[str]:
+def pdf_chunks_to_folder(
+    pdf_bytes: bytes,
+    output_dir: str,
+    max_chunk_mb: float = _DEFAULT_CHUNK_MB,
+    max_num_pages: int | None = _DEFAULT_CHUNK_MAX_PAGES,
+) -> list[str]:
     """Splits PDF into chunks and saves to output_dir. Returns list of saved paths."""
     os.makedirs(output_dir, exist_ok=True)
-    chunks = split_pdf_into_chunks(pdf_bytes, max_chunk_mb=max_chunk_mb)
+    chunks = split_pdf_into_chunks(pdf_bytes, max_chunk_mb=max_chunk_mb, max_num_pages=max_num_pages)
     paths = []
     for i, chunk in enumerate(chunks):
         path = os.path.join(output_dir, f"chunk_{i + 1:03d}.pdf")
@@ -168,25 +191,46 @@ def _get_all_langs() -> str:
     if _TESSERACT_LANGS is None:
         installed = [lang for lang in pytesseract.get_languages() if lang in _ALLOWED_LANGS]
         _TESSERACT_LANGS = "+".join(installed)
+        logger.info(f"{_ALLOWED_LANGS=}")
         logger.info(f"Tesseract languages loaded: {_TESSERACT_LANGS}")
     return _TESSERACT_LANGS
+
+
+_TESSERACT_CONFIG = "--oem 1 --psm 3"
 
 
 def ocr_pdf(pdf_bytes: bytes) -> bytes:
     """Runs Tesseract OCR on every page in parallel and returns a searchable PDF."""
     tesseract_lang = _get_all_langs()
-    images = convert_from_bytes(pdf_bytes)
-    total = len(images)
-    logger.info(f"OCR: processing {total} page(s) with lang={tesseract_lang!r}")
+
+    # Render with PyMuPDF (faster than poppler/pdf2image)
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    total = len(doc)
+    logger.info(f"OCR: rendering {total} page(s) with PyMuPDF, lang={tesseract_lang!r}")
+    logger.info(f"Using {ec.ocr_max_workers=}")
+    dpi = ec.image_dpi
+    matrix = fitz.Matrix(dpi / 72, dpi / 72)
+    images = []
+    for page in doc:
+        pix = page.get_pixmap(matrix=matrix)
+        images.append(PIL_Image.frombytes("RGB", [pix.width, pix.height], pix.samples))
+    doc.close()
+
+    # Prevent each tesseract subprocess from spawning its own thread pool —
+    # with multiple workers this causes CPU contention and kills throughput.
+    os.environ.setdefault("OMP_THREAD_LIMIT", "1")
 
     page_results: list[bytes | None] = [None] * total
 
     def _ocr_page(idx: int, image) -> tuple[int, bytes]:
-        result = pytesseract.image_to_pdf_or_hocr(image, lang=tesseract_lang, extension="pdf")
+        result = pytesseract.image_to_pdf_or_hocr(
+            image, lang=tesseract_lang, extension="pdf", config=_TESSERACT_CONFIG
+        )
         logger.info(f"OCR: page {idx + 1}/{total} done")
         return idx, result
 
     with ThreadPoolExecutor(max_workers=ec.ocr_max_workers) as executor:
+        
         futures = {executor.submit(_ocr_page, i, img): i for i, img in enumerate(images)}
         for future in as_completed(futures):
             idx, result = future.result()

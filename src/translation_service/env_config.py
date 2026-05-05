@@ -1,3 +1,4 @@
+import multiprocessing
 from decouple import config
 
 log_file = config("LOG_FILE_PATH", "app.log")
@@ -11,5 +12,7 @@ translation_client_id = config("TRANSLATION_CLIENT_ID")
 text_threshold = config("TEXT_THRESHOLD", 10, cast=int)
 pdf_chunk_size_mb = config("CHUNK_MB", 9.0, cast=float)
 image_dpi=config("IMAGE_DPI", 150, cast = int)
-ocr_languages = config("OCR_LANGUAGES", "eng,kor,tha,fra", cast=lambda v: set(v.split(",")))
-ocr_max_workers = config("OCR_MAX_WORKERS", 4, cast=int)
+# ocr_languages = config("OCR_LANGUAGES", "eng,kor,tha,fra", cast=lambda v: set(v.split(",")))
+ocr_languages = config("OCR_LANGUAGES", "srp,eng", cast=lambda v: set(v.split(",")))
+ocr_max_workers = config("OCR_MAX_WORKERS", multiprocessing.cpu_count(), cast=int)
+pdf_chunk_max_pages = config("CHUNK_MAX_PAGES", 200, cast=lambda v: int(v) if v else None)
