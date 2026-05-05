@@ -52,12 +52,15 @@ jobs:
       - name: Rebuild PyInstaller bootloader
         shell: bash
         run: |
-          BOOTLOADER_DIR=$(python -c "import PyInstaller, os; print(os.path.join(os.path.dirname(PyInstaller.__file__), 'bootloader'))")
-          cd "$BOOTLOADER_DIR"
+          PYI_VERSION=$(python -c "import PyInstaller; print(PyInstaller.__version__)")
+          git clone --depth 1 --branch "v${PYI_VERSION}" https://github.com/pyinstaller/pyinstaller.git _pyi
+          cd _pyi/bootloader
           if [ "$RUNNER_OS" == "Windows" ]; then
             export PATH="/c/msys64/mingw64/bin:$PATH"
           fi
-          python waf distclean all
+          python ./waf distclean all
+          cd ..
+          pip install . --force-reinstall
 
       - name: Collect tessdata (Linux/macOS)
         if: runner.os != 'Windows'
