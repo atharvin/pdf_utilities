@@ -49,6 +49,16 @@ jobs:
           pip install .
           pip install pyinstaller
 
+      - name: Rebuild PyInstaller bootloader
+        shell: bash
+        run: |
+          BOOTLOADER_DIR=$(python -c "import PyInstaller, os; print(os.path.join(os.path.dirname(PyInstaller.__file__), 'bootloader'))")
+          cd "$BOOTLOADER_DIR"
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            export PATH="/c/msys64/mingw64/bin:$PATH"
+          fi
+          python waf distclean all
+
       - name: Collect tessdata (Linux/macOS)
         if: runner.os != 'Windows'
         shell: bash
