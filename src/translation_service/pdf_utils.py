@@ -30,17 +30,19 @@ def is_scanned_pdf(pdf_bytes: bytes) -> bool:
         doc.close()
 
 
-def pdf_pages_to_zip(pdf_bytes: bytes, dpi: int = 150) -> bytes:
-    """Renders every page of a PDF as a PNG and returns a ZIP archive."""
+def pdf_pages_to_zip(pdf_bytes: bytes, dpi: int = 150, jpeg_quality: int = 85) -> bytes:
+    """Renders every page of a PDF as a JPEG and returns a ZIP archive."""
     matrix = fitz.Matrix(dpi / 72, dpi / 72)
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     buf = io.BytesIO()
     try:
-        logger.info(f"Rendering {len(doc)} page(s) at {dpi} dpi")
+        logger.info(f"Rendering {len(doc)} page(s) at {dpi} dpi, jpeg_quality={jpeg_quality}")
         with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
             for i, page in enumerate(doc):
                 pixmap = page.get_pixmap(matrix=matrix)
-                zf.writestr(f"page_{i + 1:04d}.png", pixmap.tobytes("png"))
+                if pixmap.alpha:
+                    pixmap = fitz.Pixmap(fitz.csRGB, pixmap)
+                zf.writestr(f"page_{i + 1:04d}.jpg", pixmap.tobytes("jpeg", jpg_quality=jpeg_quality))
     finally:
         doc.close()
     return buf.getvalue()
@@ -115,17 +117,20 @@ def pdf_chunks_to_zip(
     return buf.getvalue()
 
 
-def pdf_pages_to_folder(pdf_bytes: bytes, output_dir: str, dpi: int = 150) -> list[str]:
-    """Renders every page as a PNG and saves to output_dir. Returns list of saved paths."""
+def pdf_pages_to_folder(pdf_bytes: bytes, output_dir: str, dpi: int = 150, jpeg_quality: int = 85) -> list[str]:
+    """Renders every page as a JPEG and saves to output_dir. Returns list of saved paths."""
     os.makedirs(output_dir, exist_ok=True)
     matrix = fitz.Matrix(dpi / 72, dpi / 72)
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     paths = []
     try:
-        logger.info(f"Rendering {len(doc)} page(s) at {dpi} dpi to {output_dir}")
+        logger.info(f"Rendering {len(doc)} page(s) at {dpi} dpi, jpeg_quality={jpeg_quality} to {output_dir}")
         for i, page in enumerate(doc):
-            path = os.path.join(output_dir, f"page_{i + 1:04d}.png")
-            page.get_pixmap(matrix=matrix).save(path)
+            pixmap = page.get_pixmap(matrix=matrix)
+            if pixmap.alpha:
+                pixmap = fitz.Pixmap(fitz.csRGB, pixmap)
+            path = os.path.join(output_dir, f"page_{i + 1:04d}.jpg")
+            pixmap.save(path, output="jpeg", jpg_quality=jpeg_quality)
             paths.append(path)
     finally:
         doc.close()
