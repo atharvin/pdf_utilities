@@ -194,9 +194,14 @@ _TESSERACT_LANGS: str | None = None
 def _get_all_langs() -> str:
     global _TESSERACT_LANGS
     if _TESSERACT_LANGS is None:
-        installed = [lang for lang in pytesseract.get_languages() if lang in _ALLOWED_LANGS]
-        _TESSERACT_LANGS = "+".join(installed)
-        logger.info(f"{_ALLOWED_LANGS=}")
+        try:
+            installed = [lang for lang in pytesseract.get_languages() if lang in _ALLOWED_LANGS]
+            _TESSERACT_LANGS = "+".join(installed) if installed else "eng"
+            if not installed:
+                logger.warning(f"No allowed languages found in tessdata (allowed={_ALLOWED_LANGS}), falling back to 'eng'")
+        except Exception as e:
+            _TESSERACT_LANGS = "eng"
+            logger.warning(f"Could not query tesseract languages ({e}), falling back to 'eng'")
         logger.info(f"Tesseract languages loaded: {_TESSERACT_LANGS}")
     return _TESSERACT_LANGS
 
@@ -228,9 +233,17 @@ def ocr_pdf(pdf_bytes: bytes) -> bytes:
     page_results: list[bytes | None] = [None] * total
 
     def _ocr_page(idx: int, image) -> tuple[int, bytes]:
-        result = pytesseract.image_to_pdf_or_hocr(
-            image, lang=tesseract_lang, extension="pdf", config=_TESSERACT_CONFIG
-        )
+        try:
+            result = pytesseract.image_to_pdf_or_hocr(
+                image, lang=tesseract_lang, extension="pdf", config=_TESSERACT_CONFIG
+            )
+        except Exception as e:
+            if tesseract_lang == "eng":
+                raise
+            logger.warning(f"OCR page {idx + 1} failed with lang={tesseract_lang!r} ({e}), retrying with 'eng'")
+            result = pytesseract.image_to_pdf_or_hocr(
+                image, lang="eng", extension="pdf", config=_TESSERACT_CONFIG
+            )
         logger.info(f"OCR: page {idx + 1}/{total} done")
         return idx, result
 
