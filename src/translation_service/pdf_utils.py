@@ -206,7 +206,7 @@ def _get_all_langs() -> str:
     return _TESSERACT_LANGS
 
 
-_TESSERACT_CONFIG = "--oem 1 --psm 3"
+_TESSERACT_CONFIG = "--psm 3"
 
 
 def ocr_pdf(pdf_bytes: bytes) -> bytes:

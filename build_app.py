@@ -22,10 +22,10 @@ cmd = [
     "--hidden-import=playwright",
 ]
 
-# On Windows, tesseract.exe depends on DLLs in the same directory — bundle them all
+# On Windows, bundle all DLLs from the entire Tesseract directory tree
 if sys.platform == "win32":
     tesseract_dir = os.path.dirname(tesseract_bin)
-    for dll in glob.glob(os.path.join(tesseract_dir, "*.dll")):
+    for dll in glob.glob(os.path.join(tesseract_dir, "**", "*.dll"), recursive=True):
         cmd.extend(["--add-binary", f"{dll}{sep}."])
 
 cmd.append("app.py")
