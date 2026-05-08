@@ -1,5 +1,8 @@
 import io
 import os
+import subprocess
+import sys
+import tempfile
 import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -206,14 +209,52 @@ def _get_all_langs() -> str:
     return _TESSERACT_LANGS
 
 
-_TESSERACT_CONFIG = "--psm 3"
+# Use a stable temp dir outside AppData\Local\Temp to avoid Windows AV interference
+_OCR_TMPDIR = os.path.join(os.path.expanduser("~"), ".pdftoolstmp")
+
+
+def _run_tesseract(image, lang: str) -> bytes:
+    """Run Tesseract directly via subprocess with full stderr logging.
+
+    Bypasses pytesseract's temp-file management so we control the output location
+    and can capture the exact error when Tesseract fails.
+    """
+    tesseract_cmd = pytesseract.pytesseract.tesseract_cmd
+    tessdata_dir = (
+        os.path.join(sys._MEIPASS, "tessdata")
+        if getattr(sys, "frozen", False)
+        else os.environ.get("TESSDATA_PREFIX", "")
+    )
+    os.makedirs(_OCR_TMPDIR, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=_OCR_TMPDIR) as tmpdir:
+        input_path = os.path.join(tmpdir, "input.tiff")
+        output_base = os.path.join(tmpdir, "output")
+        image.save(input_path, format="TIFF")
+
+        cmd = [tesseract_cmd, input_path, output_base, "-l", lang, "--psm", "3"]
+        if tessdata_dir:
+            cmd.extend(["--tessdata-dir", tessdata_dir])
+        cmd.append("pdf")
+
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        if proc.stderr:
+            logger.warning(f"Tesseract stderr: {proc.stderr.strip()}")
+        if proc.returncode != 0:
+            raise RuntimeError(f"Tesseract exited {proc.returncode}: {proc.stderr.strip()}")
+
+        output_path = output_base + ".pdf"
+        if not os.path.exists(output_path):
+            raise RuntimeError(
+                f"Tesseract exited 0 but produced no output. stderr={proc.stderr.strip()!r}"
+            )
+        with open(output_path, "rb") as f:
+            return f.read()
 
 
 def ocr_pdf(pdf_bytes: bytes) -> bytes:
     """Runs Tesseract OCR on every page in parallel and returns a searchable PDF."""
     tesseract_lang = _get_all_langs()
 
-    # Render with PyMuPDF (faster than poppler/pdf2image)
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     total = len(doc)
     logger.info(f"OCR: rendering {total} page(s) with PyMuPDF, lang={tesseract_lang!r}")
@@ -226,29 +267,22 @@ def ocr_pdf(pdf_bytes: bytes) -> bytes:
         images.append(PIL_Image.frombytes("RGB", [pix.width, pix.height], pix.samples))
     doc.close()
 
-    # Prevent each tesseract subprocess from spawning its own thread pool —
-    # with multiple workers this causes CPU contention and kills throughput.
     os.environ.setdefault("OMP_THREAD_LIMIT", "1")
 
     page_results: list[bytes | None] = [None] * total
 
     def _ocr_page(idx: int, image) -> tuple[int, bytes]:
         try:
-            result = pytesseract.image_to_pdf_or_hocr(
-                image, lang=tesseract_lang, extension="pdf", config=_TESSERACT_CONFIG
-            )
+            result = _run_tesseract(image, tesseract_lang)
         except Exception as e:
             if tesseract_lang == "eng":
                 raise
-            logger.warning(f"OCR page {idx + 1} failed with lang={tesseract_lang!r} ({e}), retrying with 'eng'")
-            result = pytesseract.image_to_pdf_or_hocr(
-                image, lang="eng", extension="pdf", config=_TESSERACT_CONFIG
-            )
+            logger.warning(f"OCR page {idx + 1} failed with lang={tesseract_lang!r}: {e}, retrying with 'eng'")
+            result = _run_tesseract(image, "eng")
         logger.info(f"OCR: page {idx + 1}/{total} done")
         return idx, result
 
     with ThreadPoolExecutor(max_workers=ec.ocr_max_workers) as executor:
-        
         futures = {executor.submit(_ocr_page, i, img): i for i, img in enumerate(images)}
         for future in as_completed(futures):
             idx, result = future.result()
