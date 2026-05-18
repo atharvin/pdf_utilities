@@ -65,6 +65,14 @@ async def ocr_pdf_endpoint(file: UploadFile = File(...)):
     loop = asyncio.get_event_loop()
     output_bytes = await loop.run_in_executor(None, partial(ocr_pdf, pdf_bytes))
     stem = file.filename.removesuffix(".pdf") if file.filename else "document"
+    if ec.ocr_output_dir:
+        import os
+        from translation_service.logger_utils import logger
+        os.makedirs(ec.ocr_output_dir, exist_ok=True)
+        out_path = os.path.join(ec.ocr_output_dir, f"{stem}_ocr.pdf")
+        with open(out_path, "wb") as f:
+            f.write(output_bytes)
+        logger.info(f"OCR output saved to {out_path}")
     return StreamingResponse(
         io.BytesIO(output_bytes),
         media_type="application/pdf",
